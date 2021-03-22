@@ -1,0 +1,195 @@
+---
+title: "Liver Abscess Microbiome"
+author: "Wesley A. Tom"
+date: "7/7/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Prep files to be processed by dada2
+
+```{bash eval=FALSE, include=FALSE}
+cd /Volumes/Wes_External/LA_microbiome/LA_microbiome_fastq #this changes to the directory that I have the data stored in, you would want to change this to the file path where your data is stored
+for file in *.txt; do mv "$file" "${file}.fastq"; done #change the file extension name to fastq so the software will recognize things
+
+rename 's/Sample_/S/' *.fastq #simplify the headers for less downstream headaches
+
+```
+
+Load the software we need to run read processing (install these packages if you don't have them already installed)
+
+```{r}
+library(dada2); packageVersion("dada2")
+library(ggplot2); packageVersion("ggplot2")
+library(phyloseq)
+```
+
+```{r}
+path <- "/Volumes/Wes_External/LA_microbiome/LA_microbiome_fastq/"
+list.files(path)
+```
+
+```{r}
+# Forward and reverse fastq filenames have format: SAMPLENAME_R1_001.fastq and SAMPLENAME_R2_001.fastq
+fnFs <- sort(list.files(path, pattern="_1_sequence.txt.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern="_2_sequence.txt.fastq", full.names = TRUE))
+# Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1)
+
+#check out the quality of the reads across nucleotide positions
+fqplot <- plotQualityProfile(fnFs[1:20])
+print(fqplot)
+fqplotrev <- plotQualityProfile(fnRs[1:20])
+print(fqplotrev)
+#decided to trim at 150 on both ends
+
+# Place filtered files in filtered/ subdirectory
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+```
+
+```{r}
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(150,150),
+                     maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+                     compress=TRUE, multithread=TRUE) # On Windows set multithread=FALSE
+head(out)
+
+#dereplicate sequences:
+derepFs <- derepFastq(filtFs, verbose=TRUE)
+derepRs <- derepFastq(filtRs, verbose=TRUE)
+
+# Name the derep-class objects by the sample names
+names(derepFs) <- sample.names
+names(derepRs) <- sample.names
+
+#calculate error frequencies:
+errF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+
+plotErrors(errF)
+plotErrors(errR)
+
+#Run dada2 algorithm
+dadaFs <- dada(derepFs, err=errF, multithread=TRUE)
+dadaRs <- dada(derepRs, err=errR, multithread=TRUE)
+
+dadaFs[[1]]
+dadaRs[[1]]
+
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, verbose=TRUE)
+
+# Inspect the merger data.frame from the first sample
+head(mergers[[1]])
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+# Inspect distribution of sequence lengths
+table(nchar(getSequences(seqtab)))
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+dim(seqtab.nochim)
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+head(track)
+
+taxa <- assignTaxonomy(seqtab.nochim,"/Volumes/Wes_External/ASV_OTU_Comparison/16S_taxonomy_databases/silva_nr_v138_train_set.fa.gz", tryRC = T, multithread=TRUE)
+taxa <- addSpecies(taxa, "/Volumes/Wes_External/ASV_OTU_Comparison/16S_taxonomy_databases/silva_species_assignment_v138.fa.gz")
+taxa.print <- taxa # Removing sequence rownames for display only
+rownames(taxa.print) <- NULL
+head(taxa.print)
+```
+
+save stuff
+```{r}
+saveRDS(seqtab, file = "/Volumes/Wes_External/LA_microbiome/seqtab.rds")
+saveRDS(seqtab.nochim, file = "/Volumes/Wes_External/LA_microbiome/seqtab.nochim.rds")
+saveRDS(taxa, file = "/Volumes/Wes_External/LA_microbiome/taxa.rds")
+saveRDS(taxa.print, file = "/Volumes/Wes_External/LA_microbiome/taxa_print.rds")
+saveRDS(track, file = "/Volumes/Wes_External/LA_microbiome/track.rds")
+```
+
+sort the data and see how read depth looks
+```{r}
+trackdf <- as.data.frame(x = track)
+class(trackdf)
+
+trackdf_sorted <- trackdf[order(trackdf$nonchim),]
+View(trackdf_sorted)
+
+which(trackdf_sorted$nonchim <= 5000)
+```
+
+This tells us that there are 11 samples that have less than 5000 reads. 5000 reads is arbitrary, lets take a look at rarefaction curves and goods coverage for the samples
+
+```{r}
+library(vegan) #load the package for rarefaction curve analysis
+rarecurve(seqtab.nochim, step = 50, xlab = "Read Depth", ylab = "Species", label = TRUE)
+
+
+```
+
+
+This is good, but the larger samples drown out the lower read count samples. Make the ASV matrix just our low read count samples and take a look at them:
+```{r}
+
+samples2remove <- which(rowSums(seqtab.nochim) >= 5000)
+samples2remove
+seqtab_less5000 <- seqtab.nochim[-samples2remove,]
+rowSums(seqtab_less5000) #check to verify all samples are below 5000 reads
+
+rarecurve(seqtab_less5000, step = 50, xlab = "Read Depth", ylab = "Species", label = TRUE)
+```
+
+
+looks like 1000 reads might be sufficient sequencing depth for this data but lets make a phyloseq object that we can analyse further which combines ASV table, taxonomy, and sample data:
+
+```{r}
+#the mapping file only has 48 samples so I removed S49 and S50 because I have no information on them
+which(row.names(seqtab.nochim) == "S50")
+which(row.names(seqtab.nochim) == "S49")
+seqtab.nochim.finaldf <- seqtab.nochim[-c(44,46),]
+rownames(seqtab.nochim.finaldf)
+```
+
+make fasta file for phylogenetic tree using mothur
+
+```{r}
+transpose <- t(seqtab.nochim.finaldf)
+#file to create a fasta for alignment(tsv)
+fasta_vector <- as.data.frame(row.names(transpose), stringsAsFactors = default.stringsAsFactors())
+rownames(fasta_vector) <- row.names(transpose) 
+colnames(fasta_vector) <- NULL
+write.table(fasta_vector, file = "/Volumes/Wes_External/LA_microbiome/tsv4alignment.tsv", sep = "\t", quote = F)
+```
+
+convert those tsv files to fasta files
+```{bash}
+cd /Volumes/Wes_External/ASV_OTU_Comparison/methane_project_with_allie/fastq_files_allie_wes
+cp tab2fasta.py /Volumes/Wes_External/LA_microbiome/
+cd /Volumes/Wes_External/LA_microbiome/
+python tab2fasta.py tsv4alignment.tsv 2 1 > la_microbiome.fasta
+```
+
+align fasta sequences to SILVA reference alignment, calculate pairwise distances between ASVs, generate a newick formatted phylogenetic tree (All using Mothur)
+```{bash}
+cd /Volumes/Wes_External/LA_microbiome/
+~/mothur/mothur mothur.batch
+```
+convert everything to phyloseq object
+```{r}
+
+asv_tab <- otu_table(seqtab.nochim.finaldf, taxa_are_rows = F) 
+tax_tab <- tax_table(taxa)
+samdat <- as.data.frame(read.delim("/Volumes/Wes_External/LA_microbiome/metadata/sample_data.txt", header = T, row.names = 1, sep = "\t", strip.white = T, na.strings = "NA", stringsAsFactors = TRUE))
+samdat <- sample_data(samdat)
+tree <- read_tree(treefile = "/Volumes/Wes_External/LA_microbiome/la_microbiome.phylip.tre")
+
+la_ps <- phyloseq(asv_tab,tax_tab,samdat,tree)
+saveRDS(la_ps, file = "/Volumes/Wes_External/LA_microbiome/la_ps.rds")
+```
