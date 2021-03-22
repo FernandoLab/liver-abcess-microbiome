@@ -1,6 +1,6 @@
 # liver-abcess-microbiome
 
-Data analysis methods for filtration and analysis of samples taken from cattle liver abscesses. Data are 16S rDNA amplicon libraries (V3-4 Hypervariable region). This repository contains the R commands run on the ASV count table produced from DADA2, sample metadata, phylogenetic tree of ASV relatedness, and taxonomic classification of ASV sequences. Analysis should be performed in R version 4.0.1 (as of 2020-06-06) in the following order:
+Data analysis methods for filtration and analysis of samples taken from cattle liver abscesses. Data are 16S rDNA amplicon libraries (V3-4 Hypervariable region). This repository contains the R commands run on the ASV count table produced from DADA2, sample metadata, phylogenetic tree of ASV relatedness, and taxonomic classification of ASV sequences. Download all repository files and save them to a designated directory, within the R script files, file paths to the working directory will need to be changed accordingly. Analysis was performed in R version 4.0.1 or higher in the following order:
   
   1.) la_microbiome_analysis.R
   
@@ -8,7 +8,7 @@ Data analysis methods for filtration and analysis of samples taken from cattle l
   
   3.) network_genus.R 
 
-If the user would like to start from the raw fastq files the NCBI bioproject information and the commands to generate ASV count table, taxonomic classification, and phylogenetic tree are also included for transparency:
+If the user would like the raw fastq files for this dataset they can be found at the NCBI bioproject page. Commands to generate ASV count table, taxonomic classification, and phylogenetic tree are also included for transparency:
 
 Raw fastq data can be accessed at: https://www.ncbi.nlm.nih.gov/bioproject/?term=PRJNA657040
 
