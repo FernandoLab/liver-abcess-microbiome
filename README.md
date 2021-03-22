@@ -8,11 +8,13 @@ Data analysis methods for filtration and analysis of samples taken from cattle l
   
   3.) network_genus.R 
 
-  
+If the user would like to start from the raw fastq files the NCBI bioproject information and the commands to generate ASV count table, taxonomic classification, and phylogenetic tree are also included for transparency:
+
 Raw fastq data can be accessed at: https://www.ncbi.nlm.nih.gov/bioproject/?term=PRJNA657040
 
-Methods for fastq processing is also in the "sample_data" directory, and methods for phylogenetic tree generation assume the user has Mothur software previously installed (install - https://mothur.org/wiki/installation/).
+The commands that were used for fastq processing are also included the LA_microbiome_read_processing.Rmd markdown file. The method for phylogenetic tree generation assumes that Mothur software is previously installed (install - https://mothur.org/wiki/installation/).
 
-citation: R Core Team (2018). R: A language and environment for statistical
-  computing. R Foundation for Statistical Computing, Vienna, Austria.
-  URL https://www.R-project.org/.
+citations:
+R Core Team (2018). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
+  
+Schloss, P.D., et al., Introducing mothur: Open-source, platform-independent, community-supported software for describing and comparing microbial communities. Appl Environ Microbiol, 2009. 75(23):7537-41
